@@ -38,7 +38,6 @@ A quick example:
     apples
     bananas
     cherries
-    <BLANKLINE>
 
 Installation
 ============
