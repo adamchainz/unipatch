@@ -38,7 +38,6 @@ A quick example:
     apples
     bananas
     cherries
-    <BLANKLINE>
 
 Installation
 ============
@@ -55,7 +54,7 @@ API
 ===
 
 ``apply_patch(source: str, patch: str, forwards: bool=True)``
-------------------------------------------------------------
+-------------------------------------------------------------
 
 Apply the unified diff in the string ``patch`` to the string ``source`` and return the resulting string.
 Pass ``forwards=False`` to apply the patch in reverse, undoing it instead.
