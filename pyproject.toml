@@ -6,7 +6,7 @@ requires = [
 
 [project]
 name = "unipatch"
-version = "0.0.0"
+version = "1.0.0"
 description = "Apply unified diffs in memory, compatible with GNU patch."
 readme = "README.rst"
 keywords = [
