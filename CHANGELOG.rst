@@ -2,8 +2,8 @@
 Changelog
 =========
 
-Unreleased
-----------
+1.0.1 (2026-09-03)
+------------------
 
 * Fix applying patches with unbalanced context.
 
