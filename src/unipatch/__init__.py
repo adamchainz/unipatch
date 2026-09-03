@@ -330,10 +330,16 @@ def _find_hunk(
 
     Fuzz may ignore mismatching context lines before the first change and
     after the last one. The per-side allowance is fuzz + side’s context −
-    max(both sides’ context), so a hunk with less context on one side —
-    produced by diff only at the start or end of a file — anchors to that end
-    of the source while negative. Only the lines actually matched get
-    replaced, so ignored context lines are left as they are in the source.
+    max(both sides’ context), which may go negative for the shorter side.
+
+    A negative suffix allowance anchors the hunk to the end of the source: it
+    must match flush at end-of-file, and GNU patch rejects it mid-file even
+    when its lines match exactly. A negative prefix allowance is not
+    symmetric: it anchors to the start of the source only for a hunk stated
+    to start there, and otherwise just means no leading context may be
+    fuzz-trimmed, with the hunk searched for as usual. Only the lines
+    actually matched get replaced, so ignored context lines are left as they
+    are in the source.
     """
     prefix_context = 0
     while hunk.lines[prefix_context].tag == " ":
@@ -350,13 +356,17 @@ def _find_hunk(
         prefix_fuzz = fuzz + prefix_context - context
         suffix_fuzz = fuzz + suffix_context - context
 
+        # Diff only emits less leading than trailing context at the start of
+        # a file, but hand-written patches may do so anywhere; away from the
+        # start, a negative prefix allowance simply trims nothing.
+        start_trim = max(prefix_fuzz, 0)
+
         # context = max(prefix_context, suffix_context), so at most one of
         # prefix_fuzz and suffix_fuzz is negative.
-        if prefix_fuzz < 0:
+        if prefix_fuzz < 0 and hunk.old_start <= 1:
             # Can only match the start of the source.
             if (
-                hunk.old_start <= 1
-                and min_pos == 0
+                min_pos == 0
                 and len(old_lines) - suffix_fuzz <= len(lines)
                 and _lines_match(
                     lines,
@@ -370,16 +380,16 @@ def _find_hunk(
                 return 0, matched_old, matched_new, offset
         elif suffix_fuzz < 0:
             # Can only match the end of the source.
-            matched_old = old_lines[prefix_fuzz:]
+            matched_old = old_lines[start_trim:]
             pos = len(lines) - len(matched_old)
-            if pos >= max(min_pos, prefix_fuzz) and _lines_match(
+            if pos >= max(min_pos, start_trim) and _lines_match(
                 lines, pos, matched_old, incomplete_pos
             ):
-                matched_new = new_lines[prefix_fuzz:]
+                matched_new = new_lines[start_trim:]
                 return pos, matched_old, matched_new, offset
         else:
-            matched_old = old_lines[prefix_fuzz : len(old_lines) - suffix_fuzz]
-            matched_new = new_lines[prefix_fuzz : len(new_lines) - suffix_fuzz]
+            matched_old = old_lines[start_trim : len(old_lines) - suffix_fuzz]
+            matched_new = new_lines[start_trim : len(new_lines) - suffix_fuzz]
             if not matched_old:
                 # All of the hunk’s old lines were mismatching context: fall
                 # back to inserting the remaining lines at the stated
@@ -398,7 +408,7 @@ def _find_hunk(
                 if min_start <= max_start:
                     start = max(min_start, min(guess_src, max_start))
                     return (
-                        start + prefix_fuzz + shift,
+                        start + start_trim + shift,
                         matched_old,
                         matched_new,
                         offset + start - guess_src,
@@ -407,11 +417,11 @@ def _find_hunk(
             # The matched region may start before min_pos by the number of
             # untrimmed leading context lines, like GNU patch — the changed
             # lines still land after min_pos.
-            low = max(min_pos - prefix_context + 2 * prefix_fuzz, prefix_fuzz)
+            low = max(min_pos - prefix_context + 2 * start_trim, start_trim)
             found = _search(
                 lines,
                 matched_old,
-                guess + prefix_fuzz,
+                guess + start_trim,
                 low,
                 incomplete_pos,
             )
@@ -420,7 +430,7 @@ def _find_hunk(
                     found,
                     matched_old,
                     matched_new,
-                    offset + found - prefix_fuzz - guess,
+                    offset + found - start_trim - guess,
                 )
     raise HunkApplyError(
         f"Hunk #{hunk.number} failed to apply — its lines do not match the"
