@@ -210,6 +210,129 @@ def test_apply_fuzz_two():
     assert result == "alpha\nbrian\ncharlie\ndelta\necho\n"
 
 
+def test_apply_short_leading_context_mid_file():
+    # A hand-written hunk with less leading than trailing context, stated
+    # away from the start of the file. diff never produces this shape there,
+    # but GNU patch searches for it as usual.
+    source = "a\nb\nc\nd\ne\nf\ng\nh\n"
+    patch = dedent(
+        """\
+        @@ -3,5 +3,6 @@
+         c
+        +NEW
+         d
+         e
+         f
+         g
+        """
+    )
+    result = apply_patch(source, patch, forwards=True)
+    assert result == "a\nb\nc\nNEW\nd\ne\nf\ng\nh\n"
+
+
+def test_apply_short_leading_context_mid_file_at_offset():
+    source = "z1\nz2\na\nb\nc\nd\ne\nf\ng\nh\n"
+    patch = dedent(
+        """\
+        @@ -3,5 +3,6 @@
+         c
+        +NEW
+         d
+         e
+         f
+         g
+        """
+    )
+    result = apply_patch(source, patch, forwards=True)
+    assert result == "z1\nz2\na\nb\nc\nNEW\nd\ne\nf\ng\nh\n"
+
+
+def test_apply_short_leading_context_incomplete_count_header():
+    # As reported: the header claims six old lines but the body has five, so
+    # the hunk gains a phantom trailing context line, which fuzz 1 ignores.
+    source = "a\nb\nc\nd\ne\nf\ng\nh\n"
+    patch = dedent(
+        """\
+        @@ -3,6 +3,7 @@
+         c
+        +NEW
+         d
+         e
+         f
+         g
+        """
+    )
+    result = apply_patch(source, patch, forwards=True)
+    assert result == "a\nb\nc\nNEW\nd\ne\nf\ng\nh\n"
+
+
+def test_apply_short_leading_context_mismatch_fails():
+    # The short side gets no fuzz trim, so its one leading context line must
+    # match, like GNU patch.
+    source = "a\nb\nXX\nd\ne\nf\ng\nh\n"
+    patch = dedent(
+        """\
+        @@ -3,5 +3,6 @@
+         c
+        +NEW
+         d
+         e
+         f
+         g
+        """
+    )
+    with pytest.raises(HunkApplyError):
+        apply_patch(source, patch, forwards=True)
+
+
+@pytest.mark.parametrize(
+    ("source", "expected"),
+    [
+        (
+            "a\nb\nc\nd\ne\nf\nXX\nh\n",
+            "a\nb\nc\nNEW\nd\ne\nf\nXX\nh\n",
+        ),
+        (
+            "a\nb\nc\nd\ne\nXX\nYY\nh\n",
+            "a\nb\nc\nNEW\nd\ne\nXX\nYY\nh\n",
+        ),
+    ],
+)
+def test_apply_short_leading_context_trailing_fuzz(source, expected):
+    # The long side keeps the usual allowance: up to two mismatching
+    # trailing context lines are ignored.
+    patch = dedent(
+        """\
+        @@ -3,5 +3,6 @@
+         c
+        +NEW
+         d
+         e
+         f
+         g
+        """
+    )
+    result = apply_patch(source, patch, forwards=True)
+    assert result == expected
+
+
+def test_apply_short_leading_context_trailing_fuzz_three_fails():
+    source = "a\nb\nc\nd\nWW\nXX\nYY\nh\n"
+    patch = dedent(
+        """\
+        @@ -3,5 +3,6 @@
+         c
+        +NEW
+         d
+         e
+         f
+         g
+        """
+    )
+    with pytest.raises(HunkApplyError):
+        apply_patch(source, patch, forwards=True)
+
+
 def test_apply_fuzz_insertion_all_context_mismatching():
     # An insertion hunk whose only context line mismatches falls back to
     # inserting at the stated position, like GNU patch at maximum fuzz.
